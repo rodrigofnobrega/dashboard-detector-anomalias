@@ -1,77 +1,112 @@
 "use client";
 import React, { useState, useEffect } from 'react';
+import mqtt from 'mqtt'; 
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Activity, CheckCircle2, Thermometer, Clock, Hash, Zap, AlertTriangle, Battery } from 'lucide-react';
+import { Activity, CheckCircle2, Clock, Hash, Zap, AlertTriangle } from 'lucide-react';
 
-// Import local components
 import Card from '../components/Card';
 import Badge from '../components/Badge';
-import LineCard from '../components/LineCard'; // Renamed import
+import LineCard from '../components/LineCard'; 
 import InfoCard from '../components/InfoCard';
 
-// Import CSS
 import './page.css';
 
+const MQTT_BROKER_URL = 'wss://test.mosquitto.org:8081/mqtt'; 
+const MQTT_TOPIC = 'sensor/accelerometer/data'; 
+
 export default function Dashboard() {
-  const [status, setStatus] = useState('connected');
+  const [status, setStatus] = useState('disconnected');
   const [currentReadings, setCurrentReadings] = useState({
     ax: 0, ay: 0, az: 0, 
-    temp: 0,
     peak_frequency: 0,
     probability: 0,
-    energy: 0, // Added Energy
+    energy: 0, 
+    magnitude: 0,
     is_anomaly: false,
-    timestamp: new Date().toLocaleTimeString(),
+    timestamp: '--:--:--',
     samples: 0
   });
   const [history, setHistory] = useState([]);
   const MAX_HISTORY = 30; 
 
   useEffect(() => {
-    // -------------------------------------------------------------------------
-    // REAL MQTT INTEGRATION:
-    // const payload = JSON.parse(message.toString()); 
-    // updateDashboard(payload);
-    // -------------------------------------------------------------------------
+    console.log('Connecting to MQTT...');
+    const client = mqtt.connect(MQTT_BROKER_URL, {
+      clientId: `nextjs_${Math.random().toString(16).slice(3)}`, 
+      clean: true,
+      connectTimeout: 4000,
+      reconnectPeriod: 1000,
+    });
 
-    const interval = setInterval(() => {
-      const now = new Date();
-      
-      const newAx = (Math.random() - 0.5) * 2; 
-      const newAy = (Math.random() - 0.5) * 2;
-      const newAz = 9.8 + (Math.random() - 0.5) * 1.5;
-      const newPeakFreq = 5 + Math.random() * 50; 
-      const newProb = Math.random(); 
-      const newEnergy = Math.random() * 10; // Simulated Energy 0-10
-      const newIsAnomaly = newProb > 0.8 ? "true" : "false"; 
-
-      const newDataPoint = {
-        time: now.toLocaleTimeString('pt-BR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        ax: newAx, 
-        ay: newAy, 
-        az: newAz, 
-        peak_frequency: newPeakFreq,
-        probability: newProb,
-        energy: newEnergy, // Added to data point
-        is_anomaly: newIsAnomaly === "true",
-        temp: 30 + Math.random() * 5, 
-        samples: Math.floor(Math.random() * 1000) 
-      };
-
-      setCurrentReadings(prev => ({
-        ...newDataPoint,
-        timestamp: newDataPoint.time,
-        samples: prev.samples + 1
-      }));
-
-      setHistory(prev => {
-        const newHistory = [...prev, newDataPoint];
-        return newHistory.length > MAX_HISTORY ? newHistory.slice(newHistory.length - MAX_HISTORY) : newHistory;
+    client.on('connect', () => {
+      console.log('MQTT Connected');
+      setStatus('connected');
+      client.subscribe(MQTT_TOPIC, (err) => {
+        if (err) {
+          console.error('Subscription error:', err);
+        } else {
+          console.log(`Subscribed to ${MQTT_TOPIC}`);
+        }
       });
-    }, 1000); 
+    });
 
-    return () => clearInterval(interval);
-  }, []);
+    client.on('error', (err) => {
+      console.error('Connection error: ', err);
+      setStatus('error');
+      client.end();
+    });
+
+    client.on('reconnect', () => {
+      setStatus('reconnecting');
+    });
+
+    client.on('message', (topic, message) => {
+      console.log("Recebi em: " + topic)
+      if (topic === MQTT_TOPIC) {
+        try {
+          const payload = JSON.parse(message.toString());
+          
+          const now = new Date();
+          const timestamp = now.toLocaleTimeString('pt-BR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+          const newDataPoint = {
+            time: timestamp,
+            ax: payload.ax,
+            ay: payload.ay,
+            az: payload.az,
+            magnitude: payload.magnitude,
+            peak_frequency: payload.peak_frequency,
+            energy: payload.energy,
+            probability: payload.probability,
+            is_anomaly: payload.is_anomaly === "true" || payload.is_anomaly === true, 
+          };
+
+          // Atualizar Dashboards
+          setCurrentReadings(prev => ({
+            ...newDataPoint,
+            timestamp: timestamp,
+            samples: prev.samples + 1
+          }));
+
+          // Atualizar Gráfico
+          setHistory(prev => {
+            const newHistory = [...prev, newDataPoint];
+            return newHistory.length > MAX_HISTORY ? newHistory.slice(newHistory.length - MAX_HISTORY) : newHistory;
+          });
+
+        } catch (error) {
+          console.error('Error parsing MQTT message:', error);
+        }
+      }
+    });
+
+    return () => {
+      if (client.connected) {
+        console.log('Closing MQTT connection');
+        client.end();
+      }
+    };
+  }, []); 
 
   const isSystemNormal = !currentReadings.is_anomaly;
 
@@ -79,7 +114,6 @@ export default function Dashboard() {
     <div className="dashboard-container">
       <div className="max-width-wrapper">
         
-        {/* Header */}
         <header className="header">
           <div className="header-title-group">
             <div className="icon-box">
@@ -93,7 +127,6 @@ export default function Dashboard() {
           <Badge status={status} />
         </header>
 
-        {/* Status Banner */}
         <div className={`status-banner ${isSystemNormal ? 'normal' : 'alert'}`}>
           <div className="status-icon">
             {isSystemNormal ? <CheckCircle2 size={24} /> : <AlertTriangle size={24} />}
@@ -108,38 +141,30 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Top Row: Axis Cards + Temperature */}
         <div className="grid-4">
           <LineCard 
             label="Eixo X" 
-            value={currentReadings.ax} 
+            value={currentReadings.ax?.toFixed(4)} 
             unit="m/s²" 
             colorStyles={{ bg: '#dbeafe', text: '#2563eb' }} 
           />
           <LineCard 
             label="Eixo Y" 
-            value={currentReadings.ay} 
+            value={currentReadings.ay?.toFixed(4)} 
             unit="m/s²" 
             colorStyles={{ bg: '#dcfce7', text: '#16a34a' }} 
           />
           <LineCard 
             label="Eixo Z" 
-            value={currentReadings.az} 
+            value={currentReadings.az?.toFixed(4)} 
             unit="m/s²" 
             colorStyles={{ bg: '#ffedd5', text: '#ea580c' }} 
           />
-           <LineCard 
-            label="Temp" 
-            value={(currentReadings.temp || 0)} 
-            unit="°C" 
-            colorStyles={{ bg: '#fee2e2', text: '#ef4444' }} 
-          />
         </div>
 
-        {/* Main Content Grid: Probability Chart + Axis Chart */}
         <div className="grid-main">
           
-          {/* Probability Chart (Left) */}
+          {/* Gráfico esquerda - Probabilidade */}
           <Card style={{ minHeight: '400px' }}>
             <div style={{ marginBottom: '24px' }}>
               <h3 style={{ fontSize: '18px', fontWeight: 'bold', margin: '0 0 4px 0' }}>Probabilidade</h3>
@@ -173,7 +198,7 @@ export default function Dashboard() {
             </div>
           </Card>
 
-          {/* Main Axis Chart (Right) */}
+          {/* Gráfico direita - Eixos */}
           <Card style={{ minHeight: '400px' }}>
             <div style={{ marginBottom: '24px' }}>
               <h3 style={{ fontSize: '18px', fontWeight: 'bold', margin: '0 0 4px 0' }}>Histórico de Aceleração</h3>
@@ -195,7 +220,7 @@ export default function Dashboard() {
                     tick={{fontSize: 12, fill: '#9CA3AF'}} 
                     tickLine={false}
                     axisLine={false}
-                    domain={[-5, 15]}
+                    domain={['auto', 'auto']} // Changed to auto to adapt to real data
                   />
                   <Tooltip 
                     contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
@@ -210,7 +235,7 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* Bottom Cards - Now with Energy */}
+        {/* Bottom Cards */}
         <div className="grid-5">
           <InfoCard icon={Clock} label="Última Leitura" value={currentReadings.timestamp} />
           <InfoCard icon={Hash} label="Amostras" value={currentReadings.samples} />
