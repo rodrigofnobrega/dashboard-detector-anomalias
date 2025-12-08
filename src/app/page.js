@@ -18,7 +18,7 @@ export default function Dashboard() {
   const [status, setStatus] = useState('disconnected');
   
   const [currentReadings, setCurrentReadings] = useState({
-    ax: 0, ay: 0, az: 0, temp: 0, 
+    ax: 0, ay: 0, az: 0, 
     peak_frequency: 0,
     probability: 0,
     energy: 0, 
@@ -79,7 +79,6 @@ export default function Dashboard() {
             ax: payload.ax,
             ay: payload.ay,
             az: payload.az,
-            temp: payload.temp || 0,
             magnitude: payload.magnitude,
             peak_frequency: payload.peak_frequency,
             energy: payload.energy,
@@ -197,7 +196,8 @@ export default function Dashboard() {
           </Card>
         )}
 
-        <div className="grid-4">
+        {/* Mudado de grid-4 para grid-3 e removido o card de temperatura */}
+        <div className="grid-3">
           <LineCard 
             label="Eixo X" 
             value={currentReadings.ax?.toFixed(2)} 
@@ -215,12 +215,6 @@ export default function Dashboard() {
             value={currentReadings.az?.toFixed(2)} 
             unit="m/s²" 
             colorStyles={{ bg: '#ffedd5', text: '#ea580c' }} 
-          />
-          <LineCard 
-            label="Temperatura" 
-            value={currentReadings.temp?.toFixed(1)} 
-            unit="°C" 
-            colorStyles={{ bg: '#fee2e2', text: '#dc2626' }} 
           />
         </div>
 
