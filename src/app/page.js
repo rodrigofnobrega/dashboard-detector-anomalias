@@ -72,7 +72,7 @@ export default function Dashboard() {
           const now = new Date();
           const timestamp = now.toLocaleTimeString('pt-BR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-          const isAnomaly = payload.is_anomaly === "true" || payload.is_anomaly === true;
+          const isAnomaly = payload.is_anomaly === true || payload.is_anomaly === "true";
 
           const newDataPoint = {
             time: timestamp,
@@ -111,7 +111,7 @@ export default function Dashboard() {
                 type: payload.probability > 0.8 ? 'CRITICAL' : 'WARNING'
               };
 
-              setRecentAlerts(prev => [newAlert, ...prev].slice(0, 5));
+              setRecentAlerts(prev => [newAlert, ...prev]);
             }
           }
 
@@ -148,7 +148,7 @@ export default function Dashboard() {
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             {recentAlerts.length > 0 && (
                 <div className="alert-count-badge">
-                  {recentAlerts.length} Anomalias Recentes
+                  {recentAlerts.length} Anomalias
                 </div>
             )}
             <Badge status={status} />
@@ -180,7 +180,8 @@ export default function Dashboard() {
                 <X size={16} /> Limpar
               </button>
             </div>
-            <div className="alerts-list">
+            
+            <div className="alerts-list" style={{ maxHeight: '250px', overflowY: 'auto', paddingRight: '8px' }}>
               {recentAlerts.map(alert => (
                 <div key={alert.id} className={`alert-item ${alert.type.toLowerCase()}`}>
                   <div className="alert-time">{alert.time}</div>
